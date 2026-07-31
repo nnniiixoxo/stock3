@@ -1,0 +1,11 @@
+{
+  "base_date": null,
+  "generated_at": null,
+  "conditions": {
+    "rsi_threshold": 30,
+    "disparity_ma_period": 20,
+    "consecutive_days": 3
+  },
+  "count": 0,
+  "stocks": []
+}
