@@ -50,12 +50,16 @@ def get_label_date() -> str:
     return d.strftime("%Y%m%d")
 
 
-def screen_stock(code: str) -> dict | None:
-    """개별 종목이 3개 조건을 모두 만족하는지 확인하고, 만족 시 결과 dict 반환."""
+def screen_stock(code: str) -> tuple:
+    """
+    개별 종목이 3개 조건을 모두 만족하는지 확인.
+    반환: (결과 dict 또는 None, 도달한 단계 문자열)
+    단계: no_data / rsi_fail / disparity_fail / investor_fail / matched / error
+    """
     try:
         price_df = get_daily_ohlcv(code, days=PRICE_HISTORY_DAYS)
         if len(price_df) < DISPARITY_MA_PERIOD + 3:
-            return None
+            return None, "no_data"
 
         close = price_df["close"]
         rsi = calc_rsi(close, period=14)
@@ -63,14 +67,14 @@ def screen_stock(code: str) -> dict | None:
 
         latest_rsi = rsi.iloc[-1]
         if pd.isna(latest_rsi) or latest_rsi > RSI_THRESHOLD:
-            return None
+            return None, "rsi_fail"
 
         if not is_disparity_decreasing(disparity, lookback=2):
-            return None
+            return None, "disparity_fail"
 
         investor_df = get_foreign_institution_net(code, days=INVESTOR_HISTORY_DAYS)
         if not has_3day_consecutive_net_buy(investor_df):
-            return None
+            return None, "investor_fail"
 
         name = get_stock_name(code)
         return {
@@ -81,11 +85,11 @@ def screen_stock(code: str) -> dict | None:
             "close": float(close.iloc[-1]),
             "foreign_net_3d": int(investor_df["foreign_net"].tail(3).sum()),
             "institution_net_3d": int(investor_df["institution_net"].tail(3).sum()),
-        }
+        }, "matched"
     except Exception:
         # 개별 종목 에러는 전체 스크리닝을 막지 않도록 무시하고 로그만 출력
         print(f"[WARN] {code} 처리 중 오류:\n{traceback.format_exc()}")
-        return None
+        return None, "error"
 
 
 def main():
@@ -98,12 +102,26 @@ def main():
     print(f"스캔 대상 종목 수: {len(universe)}")
 
     matched = []
+    stage_counts = {
+        "no_data": 0, "rsi_fail": 0, "disparity_fail": 0,
+        "investor_fail": 0, "matched": 0, "error": 0,
+    }
     for idx, code in enumerate(universe, start=1):
-        result = screen_stock(code)
+        result, stage = screen_stock(code)
+        stage_counts[stage] = stage_counts.get(stage, 0) + 1
         if result:
             matched.append(result)
         if idx % 50 == 0:
             print(f"진행 상황: {idx}/{len(universe)} (현재 조건 충족: {len(matched)}개)")
+
+    print("=== 단계별 통과 현황 ===")
+    print(f"전체 스캔: {len(universe)}개")
+    print(f"  ├─ 시세 데이터 부족: {stage_counts['no_data']}개")
+    print(f"  ├─ RSI 조건 탈락: {stage_counts['rsi_fail']}개")
+    print(f"  ├─ 이격도 조건 탈락: {stage_counts['disparity_fail']}개")
+    print(f"  ├─ 수급 조건 탈락: {stage_counts['investor_fail']}개")
+    print(f"  ├─ 오류: {stage_counts['error']}개")
+    print(f"  └─ 최종 통과: {stage_counts['matched']}개")
 
     matched.sort(key=lambda x: x["rsi"])
     top_matches = matched[:RESULT_COUNT]
