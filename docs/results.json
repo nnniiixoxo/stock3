@@ -1,10 +1,11 @@
 {
-  "base_date": null,
-  "generated_at": null,
+  "base_date": "20260731",
+  "generated_at": "2026-07-31T04:51:29.421124",
   "conditions": {
     "rsi_threshold": 30,
     "disparity_ma_period": 20,
-    "consecutive_days": 3
+    "consecutive_days": 3,
+    "data_source": "naver"
   },
   "count": 0,
   "stocks": []
